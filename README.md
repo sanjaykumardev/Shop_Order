@@ -48,46 +48,142 @@ See `backend/README.md` — it's a few env-var changes and a re-run of
 `http://127.0.0.1:8000/api`. If you deploy the backend elsewhere,
 that's the only file to change.
 
-## Deploying to production
+## Deploying to production (step by step)
 
 Architecture: **Next.js frontend → Vercel**, **Django API → Render**
-(Vercel cannot run Django; the Postgres database is Supabase).
+(Vercel cannot run Django; the Postgres database is already on Supabase).
 
-### 1. Push the repo to GitHub
+> Plan: GitHub repo → Render backend → Vercel frontend.
+> Do these in order — the frontend needs the backend URL, so deploy
+> the backend first.
+
+---
+
+### Step 1 — Create the GitHub repository
+
+1. Go to https://github.com/new
+2. **Repository name**: `Shop-Itmes`
+3. Choose **Public** or **Private** (either works).
+4. **Do NOT** check "Add a README", ".gitignore", or "license" (this repo
+   already has them).
+5. Click **Create repository**.
+6. Copy your repo URL — it looks like
+   `https://github.com/YOUR_USERNAME/Shop-Itmes.git`.
+
+### Step 2 — Push this project to GitHub
+
+Open a terminal in this project folder (`D:\DEVELOPER\Shop-Itmes`) and run:
 
 ```bash
-git remote add origin https://github.com/<your-username>/Shop-Itmes.git
+git remote add origin https://github.com/YOUR_USERNAME/Shop-Itmes.git
 git push -u origin main
 ```
 
-(Or create a repo at github.com/new first, then push.)
+Enter your GitHub username and a **Personal Access Token** when prompted
+(not your normal password). If you don't have a token:
+https://github.com/settings/tokens → **Generate new token (classic)** →
+tick `repo` scope → copy the token and paste it as the password.
 
-### 2. Deploy the backend to Render
+Refresh your GitHub repo page — all files should be there.
 
-1. Render → **New + → Blueprint** → select this repo. `backend/render.yaml`
-   is auto-detected and creates the `shop-backend` web service.
-2. In the service's **Environment** tab set:
-   - `DATABASE_URL` → your Supabase connection string (Settings → Database → URI)
-   - `CORS_ALLOWED_ORIGINS` → `https://<your-frontend>.vercel.app`
-   - `CSRF_TRUSTED_ORIGINS` → `https://<your-frontend>.vercel.app`
-3. Render runs `migrate` on build, so the Supabase schema is created
-   automatically (it's already migrated if you ran it locally).
-4. Create/reset the owner login with **Render → service → Shell**:
+---
+
+### Step 3 — Deploy the backend to Render
+
+1. Go to https://render.com and sign up / log in.
+2. Click **New +** → **Blueprint** → select your `Shop-Itmes` repository.
+3. Render reads `backend/render.yaml` and creates a web service called
+   `shop-backend`. Click **Apply**.
+4. While it builds, open the service and go to the **Environment** tab.
+   Add these two variables (the other two are auto-generated):
+
+   | Variable                  | Value |
+   |---------------------------|-------|
+   | `DATABASE_URL`            | your Supabase connection string |
+   | `CORS_ALLOWED_ORIGINS`    | `https://YOUR_PROJECT.vercel.app` (you'll get this in Step 5 — you can add it later and Render redeploys automatically) |
+
+   **Where to find the Supabase connection string:**
+   - Supabase dashboard → your project → **Settings** → **Database** →
+     **Connection string** → copy the **URI** (port 5432) and paste it as
+     `DATABASE_URL`.
+
+5. Render runs `migrate` automatically during the build, so the Supabase
+   tables are created on first deploy.
+6. After the service shows **Live**, click **Shell** in the Render service
+   and create your owner account:
    ```bash
    python manage.py createsuperuser
    ```
-   (Your Supabase DB may already have an admin user — `fanboy` from the
-   starter data. Reset its password with `python manage.py changepassword fanboy`.)
-5. Note the URL, e.g. `https://shop-backend.onrender.com`.
+   Answer the prompts (username, email, password). This is your login for
+   `/admin/login`.
+   - If your Supabase DB already has an admin user (`fanboy` from the
+     starter data) but you don't know its password, reset it instead:
+     ```bash
+     python manage.py changepassword fanboy
+     ```
+7. Copy your backend URL — it looks like
+   `https://shop-backend.onrender.com`.
+8. **Test it:** open `https://shop-backend.onrender.com/api/products/` in
+   a browser — you should see the 11 products as JSON.
 
-### 3. Deploy the frontend to Vercel
+---
 
-1. Vercel → **Add New → Project** → import this repo. Next.js is
-   auto-detected.
-2. Under **Environment Variables** add:
-   - `NEXT_PUBLIC_API_BASE` → `https://shop-backend.onrender.com/api`
-3. Deploy. The shop is live at `https://<your-project>.vercel.app`, admin
-   at `/admin/login`.
+### Step 4 — Set your frontend backend URL
+
+In `frontend/lib/api.ts` the API base is controlled by an env var. For
+production it must point at your Render URL, so the frontend build needs:
+
+```
+NEXT_PUBLIC_API_BASE=https://shop-backend.onrender.com/api
+```
+
+(You set this on Vercel in Step 5 — no code changes needed.)
+
+---
+
+### Step 5 — Deploy the frontend to Vercel
+
+1. Go to https://vercel.com and log in with GitHub.
+2. **Add New** → **Project** → import your `Shop-Itmes` repository.
+   (You may need to "Import" → grant Vercel access to the repo first.)
+3. Vercel auto-detects **Next.js**. Leave framework/preset as is.
+4. Click **Environment Variables** and add one:
+
+   | Key                     | Value |
+   |-------------------------|-------|
+   | `NEXT_PUBLIC_API_BASE`  | `https://shop-backend.onrender.com/api` |
+
+5. Click **Deploy**. Wait for the build to finish (it takes ~1 minute).
+6. You get a URL like `https://shop-xxxx.vercel.app`.
+
+---
+
+### Step 6 — Wire CORS and test everything
+
+1. Go back to **Render** → service → **Environment** and confirm
+   `CORS_ALLOWED_ORIGINS` includes your Vercel URL:
+   `https://shop-xxxx.vercel.app`. (Save → it auto-redeploys.)
+2. Open your Vercel URL:
+   - `/` → redirects to `/register` → register → browse products →
+     add to cart → checkout → pay.
+   - `/admin/login` → log in with the superuser you created in Step 3.
+3. If products show a broken image, make sure the Render URL is reachable:
+   open `https://shop-backend.onrender.com/api/products/` — image fields
+   contain full URLs served by the backend.
+
+---
+
+### What to check if something breaks
+
+- **Frontend can't load products** → `NEXT_PUBLIC_API_BASE` missing or
+  wrong on Vercel; or the Render service isn't Live.
+- **CORS error in the browser** → `CORS_ALLOWED_ORIGINS` on Render doesn't
+  include your exact Vercel URL.
+- **`AllowsHost` error from Django** → your backend domain isn't in
+  `ALLOWED_HOSTS`. `*.onrender.com` is allowed by default; a custom domain
+  must be added.
+- **Login fails** → reset the admin password via Render Shell
+  (`python manage.py changepassword <username>`).
 
 ### Extra notes
 
