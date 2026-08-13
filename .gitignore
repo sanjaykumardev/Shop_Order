@@ -1,0 +1,21 @@
+# Secrets — never commit
+backend/.env
+.env
+.env.local
+
+# Database (Supabase is used in production; any local db file is throwaway)
+backend/db.sqlite3
+*.sqlite3
+
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Editor
+.vscode/
