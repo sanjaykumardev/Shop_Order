@@ -14,13 +14,18 @@ export default function AdminSettingsPage() {
   const router = useRouter();
 
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  const [createUsername, setCreateUsername] = useState("");
+  const [createEmail, setCreateEmail] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState ("");
 
   async function handleChangeCredentials(
     event: React.FormEvent<HTMLFormElement>
@@ -35,8 +40,8 @@ export default function AdminSettingsPage() {
       return;
     }
 
-    if (!username && !newPassword) {
-      setError("Please enter a new username or new password.");
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -72,7 +77,8 @@ export default function AdminSettingsPage() {
           },
 
           body: JSON.stringify({
-            username,
+            new_username: username,
+            new_email: email,
             current_password: currentPassword,
             new_password: newPassword,
           }),
@@ -107,7 +113,80 @@ export default function AdminSettingsPage() {
       );
     } finally {
       setLoading(false);
-   }
+    }
+  }
+
+  async function handleCreateUser() {
+    setError("");
+    setMessage("");
+
+    if (!createUsername || !createEmail || !createPassword) {
+      setError("username, email and password are required.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const token = getAdminToken();
+
+      if (!token) {
+        setError("Admin session expired. Please login again.");
+        router.push("/admin/login");
+        return;
+      }
+
+      const response = await fetch(
+        ENDPOINTS.adminCreateUser,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            username: createUsername,
+            email: createEmail,
+            password: createPassword,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.status === 401) {
+        clearAdminToken();
+        router.push("/admin/login");
+        return;
+      }
+
+      if (!response.ok) {
+        setError(
+          data.detail ||
+          "Unable to create admin user."
+        );
+        return;
+      }
+
+      setMessage(
+        "New admin user created successfully. OTP sent to their email."
+      );
+
+      // Reset create form fields
+      setCreateUsername("");
+      setCreateEmail("");
+      setCreatePassword("");
+    } catch (error) {
+      console.error(error);
+
+      setError(
+        "Unable to connect to the server."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -177,6 +256,48 @@ export default function AdminSettingsPage() {
                 setUsername(event.target.value)
               }
               placeholder="Enter new username"
+              className="
+                w-full
+                rounded-xl
+                border
+                px-4
+                py-3
+                text-sm
+                outline-none
+              "
+              style={{
+                borderColor: "#D8D9CC",
+              }}
+            />
+          </div>
+
+          {/* EMAIL (used for the OTP login code) */}
+
+          <div className="mb-5">
+            <label
+              className="mb-2 block text-sm font-medium"
+              style={{
+                color: "#1F2B22",
+              }}
+            >
+              Email
+              <span
+                className="ml-2 text-xs"
+                style={{
+                  color: "#6B7268",
+                }}
+              >
+                used for the 2-step login code
+              </span>
+            </label>
+
+            <input
+              type="email"
+              value={email}
+              onChange={(event) =>
+                setEmail(event.target.value)
+              }
+              placeholder="Enter your email"
               className="
                 w-full
                 rounded-xl
@@ -294,6 +415,110 @@ export default function AdminSettingsPage() {
             />
           </div>
 
+          {/* CREATE NEW USER SECTION */}
+
+          <div className="mb-5 border-t pt-4">
+            <h3 className="mb-3 text-sm font-medium text-[#6B7268]">
+              Create New Admin User
+            </h3>
+            <p className="text-xs text-[#6B7268] mb-2">
+              Set up a new administrator account with username, email, and password.
+              The new user will receive an OTP for 2-step verification.
+            </p>
+
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-[#1F2B22]">
+                New Username
+              </label>
+              <input
+                type="text"
+                value={createUsername}
+                onChange={(event) => setCreateUsername(event.target.value)}
+                placeholder="Enter new username"
+                className="
+                  w-full
+                  rounded-xl
+                  border
+                  px-4
+                  py-3
+                  text-sm
+                  outline-none
+                "
+                style={{ borderColor: "#D8D9CC" }}
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-[#1F2B22]">
+                New Email
+              </label>
+              <input
+                type="email"
+                value={createEmail}
+                onChange={(event) => setCreateEmail(event.target.value)}
+                placeholder="Enter new email"
+                className="
+                  w-full
+                  rounded-xl
+                  border
+                  px-4
+                  py-3
+                  text-sm
+                  outline-none
+                "
+                style={{ borderColor: "#D8D9CC" }}
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-[#1F2B22]">
+                New Password
+              </label>
+              <input
+                type="password"
+                value={createPassword}
+                onChange={(event) => setCreatePassword(event.target.value)}
+                placeholder="Enter new password"
+                className="
+                  w-full
+                  rounded-xl
+                  border
+                  px-4
+                  py-3
+                  text-sm
+                  outline-none
+                "
+                style={{ borderColor: "#D8D9CC" }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="
+                w-full
+                rounded-xl
+                px-4
+                py-3
+                text-sm
+                font-semibold
+                text-white
+                disabled:opacity-60
+              "
+              style={{
+                backgroundColor: "#1F2B22",
+                opacity: loading ? 0.6 : 1,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading
+                ? "Creating..."
+                : createUsername || createEmail || createPassword
+                ? "Creating User..."
+                : "Create New Admin User"}
+            </button>
+          </div>
+
           {/* ERROR */}
 
           {error && (
@@ -339,9 +564,7 @@ export default function AdminSettingsPage() {
             style={{
               backgroundColor: "#1F2B22",
               opacity: loading ? 0.6 : 1,
-              cursor: loading
-                ? "not-allowed"
-                : "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
             {loading
@@ -350,6 +573,8 @@ export default function AdminSettingsPage() {
           </button>
 
         </form>
+
+        {/* CREATE NEW USER BUTTON (outside form for dedicated action) */}
 
         {/* BACK BUTTON */}
 

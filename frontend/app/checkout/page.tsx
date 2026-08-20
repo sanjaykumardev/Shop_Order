@@ -48,7 +48,9 @@ export default function CheckoutPage() {
       setStatus("paying");
       await apiFetch(ENDPOINTS.payOrder(order.id), {
         method: "POST",
-        body: JSON.stringify({ method }),
+        body: JSON.stringify({
+          method: method === "cod" ? "cash_on_delivery" : "upi",
+        }),
       });
 
       clearCart();

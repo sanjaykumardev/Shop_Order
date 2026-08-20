@@ -1,14 +1,21 @@
 from decimal import Decimal
+import re
 
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.utils import timezone
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
 from datetime import datetime, time
+
+import logging
 
 from rest_framework import status, generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.models import User
+from django.contrib.auth import hashers
 
 
 from django.contrib.auth.models import User
@@ -16,13 +23,25 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
-from .models import Product, Customer, Order, OrderItem ,DailySales
+from .models import Product, Customer, Order, OrderItem, DailySales
+from .otp import send_admin_otp, verify_admin_otp
 from .serializers import (
     ProductSerializer,
     CustomerSerializer,
     OrderCreateSerializer,
     OrderSerializer,
 )
+
+# Indian mobile number: exactly 10 digits, starting 6-9.
+PHONE_REGEX = re.compile(r"^[6-9]\d{9}$")
+
+
+def is_valid_email(value):
+    try:
+        validate_email(value)
+        return True
+    except ValidationError:
+        return False
 
 
 class ProductListView(generics.ListAPIView):
@@ -49,6 +68,12 @@ class CustomerRegisterView(APIView):
         if not name or not phone:
             return Response(
                 {"detail": "name and phone are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not PHONE_REGEX.match(phone):
+            return Response(
+                {"detail": "Enter a valid 10-digit mobile number."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -147,7 +172,9 @@ class OrderPayView(APIView):
 
         order.payment_method = method
 
-        if method == "cash_on_delivery":
+        # Cash on Delivery -> order stays pending until the owner delivers.
+        # Every other method (upi, online, card, ...) -> paid immediately.
+        if method in ("cash_on_delivery", "cod"):
             order.status = "pending"
         else:
             order.status = "paid"
@@ -165,21 +192,132 @@ class OrderPayView(APIView):
 
 
 class AdminLoginView(APIView):
-    """POST /api/admin/login/ — { username, password } -> { token }.
-
-    Only staff users (owner accounts) may obtain a token here — create
-    one with `python manage.py createsuperuser`.
-    """
+    """POST /api/admin/login/ — simple username/password login, returns JWT."""
 
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get("username", "")
+        username = request.data.get("username", "").strip()
         password = request.data.get("password", "")
         user = authenticate(username=username, password=password)
 
         if user is None or not user.is_staff:
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "detail": "Login successful.",
+                "token": str(refresh.access_token),
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminUserCreateView(APIView):
+    """POST /api/admin/create-user/ — Create a new admin user with username, email, and password.
+
+    Request body: { username, email, password }
+    The new user will have is_staff=True so they can access the admin API.
+    A verification email with OTP will be sent to the new user's email.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        email = (request.data.get("email") or "").strip()
+        password = request.data.get("password") or ""
+
+        if not username or not email or not password:
+            return Response(
+                {"detail": "username, email and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {"detail": "A user with this username already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {"detail": "A user with this email already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.create_user(username=username, email=email, password=password)
+            user.is_staff = True
+            user.save(update_fields=["is_staff"])
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to create user: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Send OTP to the new admin's email for 2-step verification
+        try:
+            send_admin_otp(email)
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error("Failed to send OTP to new admin %s: %s", email, str(e))
+            # User was created but OTP failed - still return success but warn
+            return Response(
+                {
+                    "detail": "User created but failed to send OTP email. Contact shop owner.",
+                    "user_id": user.id,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        return Response(
+            {
+                "detail": "User created successfully. OTP sent to your registered email.",
+                "user_id": user.id,
+                "username": user.username,
+                "email": user.email,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminOtpVerifyView(APIView):
+    """POST /api/admin/verify-otp/ — step 2 of 2.
+
+    { email, otp } -> verifies the one-time code and returns the JWT.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = (request.data.get("email", "") or "").strip().lower()
+        otp = (request.data.get("otp", "") or "").strip()
+
+        if not email or not otp:
+            return Response(
+                {"detail": "email and otp are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(email__iexact=email, is_staff=True).first()
+        if user is None:
+            return Response(
+                {"detail": "Invalid code or expired session."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not verify_admin_otp(user.email, otp):
+            return Response(
+                {"detail": "Invalid or expired code. Request a new one."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
         refresh = RefreshToken.for_user(user)
         return Response({"token": str(refresh.access_token)})
@@ -204,6 +342,7 @@ class AdminChangeCredentialsView(APIView):
         current_password = request.data.get("current_password", "")
         new_username = request.data.get("username", "").strip()
         new_password = request.data.get("new_password", "")
+        new_email = (request.data.get("email", "") or "").strip()
 
         # Current password is required
         if not current_password:
@@ -219,10 +358,10 @@ class AdminChangeCredentialsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # At least username or password must be changed
-        if not new_username and not new_password:
+        # At least username, email or password must be changed
+        if not new_username and not new_password and not new_email:
             return Response(
-                {"detail": "Enter a new username or new password."},
+                {"detail": "Enter a new username, email or new password."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -241,6 +380,28 @@ class AdminChangeCredentialsView(APIView):
                     )
 
                 user.username = new_username
+
+        # Change email (must be a real email address)
+        if new_email:
+
+            if new_email.lower() != user.email.lower():
+
+                if not is_valid_email(new_email):
+                    return Response(
+                        {"detail": "Enter a valid email address."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                if User.objects.filter(email__iexact=new_email).exclude(
+                    id=user.id
+                ).exists():
+
+                    return Response(
+                        {"detail": "This email is already used by another account."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                user.email = new_email
 
         # Change password
         if new_password:
