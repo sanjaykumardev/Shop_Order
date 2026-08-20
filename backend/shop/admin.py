@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Product, Customer, Order, OrderItem, DailySales
+from .models import Product, Customer, Order, OrderItem, DailySales, AdminOTP
 
 
 @admin.register(Product)
@@ -31,3 +31,10 @@ class OrderAdmin(admin.ModelAdmin):
 class DailySalesAdmin(admin.ModelAdmin):
     list_display = ["date", "total_orders", "total_items", "total_amount"]
     search_fields = ["date"]
+
+
+@admin.register(AdminOTP)
+class AdminOTPAdmin(admin.ModelAdmin):
+    list_display = ["email", "created_at", "expires_at", "is_used"]
+    list_filter = ["is_used"]
+    search_fields = ["email"]

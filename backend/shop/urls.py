@@ -2,11 +2,13 @@ from django.urls import path
 
 from .views import (
     AdminChangeCredentialsView,
+    AdminUserCreateView,
     ProductListView,
     CustomerRegisterView,
     OrderCreateView,
     OrderPayView,
     AdminLoginView,
+    AdminOtpVerifyView,
     AdminOrderListView,
     AdminOrderDoneView,
     AdminDashboardView,
@@ -55,6 +57,12 @@ urlpatterns = [
         AdminLoginView.as_view(),
         name="admin-login"
     ),
+
+    path(
+        "admin/verify-otp/",
+        AdminOtpVerifyView.as_view(),
+        name="admin-verify-otp"
+    ),
     
     path(
     "admin/change-credentials/",
@@ -77,5 +85,13 @@ urlpatterns = [
         "admin/dashboard/",
         AdminDashboardView.as_view(),
         name="admin-dashboard"
+    ),
+
+    # ADMIN USER MANAGEMENT
+
+    path(
+        "admin/create-user/",
+        AdminUserCreateView.as_view(),
+        name="admin-create-user"
     ),
 ]
