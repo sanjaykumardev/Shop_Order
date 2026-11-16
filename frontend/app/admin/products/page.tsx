@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ENDPOINTS } from "@/lib/api";
 import { clearAdminToken, getAdminToken } from "@/lib/adminSession";
@@ -15,22 +15,148 @@ interface Product {
   created_at: string;
 }
 
+// NOTE: ideally move this into ENDPOINTS in "@/lib/api" like the others,
+// so it points at the Django server instead of the Next.js server.
+const PRODUCTS_UPDATE = (id: number) => `/api/admin/products/update/${id}/`;
+
+const inputClass = "w-full rounded-xl border px-4 py-3 text-sm outline-none";
+const inputStyle: CSSProperties = { borderColor: "#D8D9CC", color: "#1F2B22" };
+const thStyle: CSSProperties = {
+  padding: "12px 16px",
+  textAlign: "left",
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+  color: "#6B7268",
+  fontWeight: 600,
+};
+const tdStyle: CSSProperties = { padding: "12px 16px" };
+const columns: [string, string | undefined][] = [
+  ["Name", "150px"],
+  ["Price", "100px"],
+  ["Stock", "80px"],
+  ["Description", "200px"],
+  ["Image", "120px"],
+  ["Actions", undefined],
+];
+
+// Send the form as-is, but drop the image field when no file was chosen.
+function buildFormData(form: HTMLFormElement) {
+  const fd = new FormData(form);
+  const img = fd.get("image");
+  if (!(img instanceof File) || img.size === 0) fd.delete("image");
+  return fd;
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium mb-1" style={{ color: "#1F2B22" }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+// Shared fields for the add and edit forms.
+function ProductFields({ product }: { product?: Product }) {
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-4">
+        <Field label="Product Name">
+          <input
+            type="text"
+            name="name"
+            defaultValue={product?.name ?? ""}
+            required
+            className={inputClass}
+            style={inputStyle}
+            placeholder="Enter product name"
+          />
+        </Field>
+        <Field label="Price (₹)">
+          <input
+            type="number"
+            name="price"
+            min="0"
+            step="0.01"
+            defaultValue={product?.price?.toString() ?? ""}
+            required
+            className={inputClass}
+            style={inputStyle}
+            placeholder="Enter price"
+          />
+        </Field>
+        <Field label="Stock">
+          <input
+            type="number"
+            name="stock"
+            min="0"
+            step="1"
+            defaultValue={product?.stock?.toString() ?? ""}
+            required
+            className={inputClass}
+            style={inputStyle}
+            placeholder="Enter stock quantity"
+          />
+        </Field>
+        <Field label="Description">
+          <input
+            type="text"
+            name="description"
+            defaultValue={product?.description ?? ""}
+            className={inputClass}
+            style={inputStyle}
+            placeholder="Enter product description"
+          />
+        </Field>
+      </div>
+
+      <div className="mt-4">
+        <label className="block text-sm font-medium mb-1" style={{ color: "#1F2B22" }}>
+          Product Image
+        </label>
+        <input type="file" name="image" accept="image/*" className={inputClass} style={inputStyle} />
+        <p className="mt-2 text-xs text-gray-500">
+          {product?.image
+            ? "The current image is kept unless you choose a new one."
+            : "Supported: jpg, png, gif. Max 5MB."}
+        </p>
+      </div>
+    </>
+  );
+}
+
 export default function AdminProductsPage() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [editId, setEditId] = useState<number | null>(null);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
 
   const token = getAdminToken();
 
-  // Product API paths
-  const PRODUCTS_LIST = ENDPOINTS.products;
-  const PRODUCTS_CREATE = ENDPOINTS.adminProductsCreate;
-  const PRODUCTS_DELETE = (id: number) => ENDPOINTS.adminProductsDelete(id);
-  const PRODUCTS_UPDATE = (id: number) => `/api/admin/products/update/${id}/`;
+  // One place for auth header, 401 handling and error messages.
+  async function api(url: string, init: RequestInit = {}) {
+    const res = await fetch(url, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`, ...init.headers },
+    });
+    if (res.status === 401) {
+      clearAdminToken();
+      router.push("/admin/login");
+      throw new Error("Your session expired. Please log in again.");
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Something went wrong. Please try again.");
+    }
+    return res;
+  }
+
+  const messageOf = (err: unknown, fallback: string) =>
+    err instanceof Error && err.message ? err.message : fallback;
 
   // Load products
   useEffect(() => {
@@ -38,109 +164,60 @@ export default function AdminProductsPage() {
       router.push("/admin/login");
       return;
     }
-
-    setLoading(true);
-    setError("");
-
-    fetch(PRODUCTS_LIST, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    })
-      .then((res) => {
-        if (res.status === 401) {
-          clearAdminToken();
-          router.push("/admin/login");
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setProducts(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to load products");
-        setLoading(false);
-      });
+    api(ENDPOINTS.products)
+      .then((res) => res.json())
+      .then((data) => setProducts(Array.isArray(data) ? data : data.results ?? []))
+      .catch((err) => setError(messageOf(err, "Failed to load products")))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const handleDelete = (id: number) => {
-    setDeleteId(id);
+  const confirmDelete = async () => {
+    if (deleteId === null) return;
+    const id = deleteId;
+    try {
+      await api(ENDPOINTS.adminProductsDelete(id), { method: "DELETE" });
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      setError("");
+    } catch (err) {
+      setError(messageOf(err, "Failed to delete product"));
+    }
+    setDeleteId(null);
   };
 
-  const confirmDelete = () => {
-    if (!deleteId) return;
-
-    fetch(PRODUCTS_DELETE(deleteId), {
-      method: "DELETE",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    })
-      .then((res) => {
-        if (res.status === 401) {
-          clearAdminToken();
-          router.push("/admin/login");
-          return;
-        }
-        if (!res.ok) {
-          return res.json().then((d) => { throw new Error(d.detail || "Failed to delete"); });
-        }
-        setProducts(products.filter((p) => p.id !== deleteId));
-        setDeleteId(null);
-        setError("");
-      })
-      .catch((err) => {
-        console.error(err);
-        setError(err.message || "Failed to delete product");
-        setDeleteId(null);
+  const handleAdd = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    try {
+      const res = await api(ENDPOINTS.adminProductsCreate, {
+        method: "POST",
+        body: buildFormData(form),
       });
+      const created: Product = await res.json();
+      setProducts((prev) => [created, ...prev]);
+      setError("");
+      form.reset();
+    } catch (err) {
+      setError(messageOf(err, "Failed to add product"));
+    }
   };
 
-  const confirmEdit = () => {
-    if (!editId || !editProduct) return;
-
-    const formData = new FormData();
-    formData.append("name", editProduct.name);
-    formData.append("price", String(editProduct.price));
-    formData.append("stock", String(editProduct.stock));
-    formData.append("description", editProduct.description || "");
-    if (editProduct.imageFile) {
-      formData.append("image", editProduct.imageFile);
-    }
-    if (editProduct.existingImage) {
-      formData.append("existingImage", editProduct.existingImage);
-    }
-
-    fetch(PRODUCTS_UPDATE(editId), {
-      method: "PUT",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-      },
-      body: formData,
-    })
-      .then((res) => {
-        if (res.status === 401) {
-          clearAdminToken();
-          router.push("/admin/login");
-          return;
-        }
-        if (!res.ok) {
-          return res.json().then((d) => { throw new Error(d.detail || "Failed to update"); });
-        }
-        setProducts(products.map((p) => p.id === editId ? res.data : p));
-        setEditId(null);
-        setEditProduct(null);
-        setError("");
-      })
-      .catch((err) => {
-        console.error(err);
-        setError(err.message || "Failed to update product");
-        setEditId(null);
-        setEditProduct(null);
+  const handleEdit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editProduct) return;
+    const form = e.currentTarget;
+    try {
+      const res = await api(PRODUCTS_UPDATE(editProduct.id), {
+        method: "PUT",
+        body: buildFormData(form),
       });
+      const updated: Product = await res.json();
+      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setEditProduct(null);
+      setError("");
+    } catch (err) {
+      setError(messageOf(err, "Failed to update product"));
+    }
   };
 
   if (loading) {
@@ -159,193 +236,80 @@ export default function AdminProductsPage() {
       <div className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
 
         {/* HEADER */}
-        <header className="mb-8 flex items-end justify-between border-b pb-6" style={{ borderColor: "#D8D9CC" }}>
+        <header
+          className="mb-8 flex items-end justify-between border-b pb-6"
+          style={{ borderColor: "#D8D9CC" }}
+        >
           <div>
             <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#3F6C51" }}>Products</p>
             <h1 className="text-3xl font-bold" style={{ color: "#1F2B22" }}>Product Management</h1>
           </div>
-
-          <div className="flex items-center gap-4">
-            {/* BACK TO DASHBOARD */}
-            <button
-              onClick={() => router.push("/admin/dashboard")}
-              className="rounded-xl px-4 py-2 text-sm font-medium text-white"
-              style={{ backgroundColor: "#1F2B22" }}
-            >
-              Dashboard
-            </button>
-          </div>
+          <button
+            onClick={() => router.push("/admin/dashboard")}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-white"
+            style={{ backgroundColor: "#1F2B22" }}
+          >
+            Dashboard
+          </button>
         </header>
 
-        {/* PRODUCTS TABLE */}
         <section className="mt-8">
           {error && (
             <div
-              className="rounded-2xl bg-white p-6 shadow-sm mb-6"
+              className="rounded-2xl p-6 shadow-sm mb-6"
               style={{ backgroundColor: "#FCE8E6", color: "#C0463B" }}
             >
               {error}
             </div>
           )}
 
+          {/* PRODUCTS TABLE */}
           {products.length === 0 ? (
-            <div
-              className="rounded-2xl bg-white p-8 text-center shadow-sm"
-              style={{ backgroundColor: "#FFFFFF" }}
-            >
-              <p className="text-lg font-bold" style={{ color: "#1F2B22" }}>
-                No products found
-              </p>
+            <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
+              <p className="text-lg font-bold" style={{ color: "#1F2B22" }}>No products found</p>
               <p className="mt-2 text-sm" style={{ color: "#6B7268" }}>
-                Add your first product using the button below.
+                Add your first product using the form below.
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full rounded-lg shadow-sm bg-white">
                 <thead>
-                  <tr
-                    style={{ backgroundColor: "#F8F9FA", borderBottom: "1px solid #E0E0E0" }}
-                  >
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        color: "#6B7268",
-                        fontWeight: "600",
-                        width: "150px",
-                      }}
-                    >
-                      Name
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        color: "#6B7268",
-                        fontWeight: "600",
-                        width: "100px",
-                      }}
-                    >
-                      Price
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        color: "#6B7268",
-                        fontWeight: "600",
-                        width: "80px",
-                      }}
-                    >
-                      Stock
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        color: "#6B7268",
-                        fontWeight: "600",
-                        width: "200px",
-                      }}
-                    >
-                      Description
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        color: "#6B7268",
-                        fontWeight: "600",
-                        width: "120px",
-                      }}
-                    >
-                      Image
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 16px",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        color: "#6B7268",
-                        fontWeight: "600",
-                      }}
-                    >
-                      Actions
-                    </th>
+                  <tr style={{ backgroundColor: "#F8F9FA", borderBottom: "1px solid #E0E0E0" }}>
+                    {columns.map(([label, width]) => (
+                      <th key={label} style={{ ...thStyle, width }}>{label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {products.map((product) => (
-                    <tr
-                      key={product.id}
-                      style={{
-                        borderBottom: "1px solid #E0E0E6",
-                        transition: "background-color 0.2s",
-                      }}
-                    >
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          color: "#1F2B22",
-                          fontWeight: "500",
-                        }}
-                      >
-                        {product.name}
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          color: "#3F6C51",
-                          fontWeight: "500",
-                        }}
-                      >
+                    <tr key={product.id} style={{ borderBottom: "1px solid #E0E0E6" }}>
+                      <td style={{ ...tdStyle, color: "#1F2B22", fontWeight: 500 }}>{product.name}</td>
+                      <td style={{ ...tdStyle, color: "#3F6C51", fontWeight: 500 }}>
                         ₹{Number(product.price).toFixed(2)}
                       </td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          color: "#6B7268",
-                          fontWeight: "500",
-                        }}
-                      >
+                      <td style={{ ...tdStyle, color: "#6B7268", fontWeight: 500 }}>
                         {Number(product.stock)}
                       </td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          color: "#1F2B22",
-                        }}
-                      >
-                        {product.description ? product.description.substring(0, 50) + "..." : "No description"}
+                      <td style={{ ...tdStyle, color: "#1F2B22" }}>
+                        {product.description
+                          ? product.description.length > 50
+                            ? product.description.substring(0, 50) + "..."
+                            : product.description
+                          : "No description"}
                       </td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          textAlign: "center",
-                        }}
-                      >
+                      <td style={{ ...tdStyle, textAlign: "center" }}>
                         {product.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={product.image}
                             alt={product.name}
-                            className="w-12 h-12 object-cover rounded"
+                            className="object-cover rounded"
                             style={{ width: "80px", height: "80px" }}
                           />
                         ) : (
                           <div
-                            className="w-12 h-12 rounded-bg"
+                            className="rounded"
                             style={{
                               width: "80px",
                               height: "80px",
@@ -361,29 +325,22 @@ export default function AdminProductsPage() {
                           </div>
                         )}
                       </td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          textAlign: "left",
-                        }}
-                      >
-                        <div className="flex gap-2">
-                          {/* Delete button */}
+                      <td style={tdStyle}>
+                        <div className="flex gap-3">
                           <button
-                            onClick={() => handleDelete(product.id)}
-                            className="text-sm text-red-600 hover:text-red-800"
+                            type="button"
+                            onClick={() => setDeleteId(product.id)}
+                            className="text-sm"
                             style={{ color: "#C0463B" }}
                             aria-label={`Delete product ${product.name}`}
                           >
                             Delete
                           </button>
-
-                          {/* Edit button */}
-                          {editId === product.id ? (
+                          {editProduct?.id === product.id ? (
                             <button
                               type="button"
-                              onClick={() => setEditId(null)}
-                              className="text-sm text-gray-600 hover:text-gray-800"
+                              onClick={() => setEditProduct(null)}
+                              className="text-sm"
                               style={{ color: "#6B7268" }}
                               aria-label={`Cancel editing product ${product.name}`}
                             >
@@ -393,7 +350,7 @@ export default function AdminProductsPage() {
                             <button
                               type="button"
                               onClick={() => setEditProduct(product)}
-                              className="text-sm text-blue-600 hover:text-blue-800"
+                              className="text-sm"
                               style={{ color: "#3F6C51" }}
                               aria-label={`Edit product ${product.name}`}
                             >
@@ -410,150 +367,12 @@ export default function AdminProductsPage() {
           )}
 
           {/* EDIT PRODUCT FORM */}
-          {editId && editProduct && (
-            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm" style={{ backgroundColor: "#FFFFFF" }}>
-              <h2
-                className="mb-4 textxl font-bold"
-                style={{ color: "#1F2B22" }}
-              >
-                Edit Product
-              </h2>
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  
-                  const nameInput = e.target.name as HTMLInputElement;
-                  const priceInput = e.target.price as HTMLInputElement;
-                  const stockInput = e.target.stock as HTMLInputElement;
-                  const descInput = e.target.description as HTMLInputElement;
-                  const imageInput = e.target.image as HTMLInputElement;
-                  
-                  const name = nameInput.value;
-                  const price = Number(priceInput.value);
-                  const stock = Number(stockInput.value);
-                  const description = descInput.value;
-                  const imageFile = imageInput ? (imageInput.files?.[0] || null) : null;
-
-                  if (!name || !price || !stock) {
-                    setError("Please fill in all fields");
-                    return;
-                  }
-
-                  setEditProduct({
-                    ...editProduct,
-                    name,
-                    price,
-                    stock,
-                    description,
-                    imageFile,
-                    existingImage: editProduct.image || "",
-                  });
-
-                  confirmEdit();
-                }}
-              >
-
-                <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-4">
-                  <div>
-                    <label
-                      className="block text-sm font-medium text-[#1F2B22] mb-1"
-                      style={{ color: "#1F2B22" }}
-                    >
-                      Product Name
-                    </label>
-                    <input
-                      type="text"
-                      name="name"
-                      defaultValue={editProduct?.name || ""}
-                      required
-                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                      placeholder="Enter product name"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      className="block text-sm font-medium text-[#1F2B22] mb-1"
-                      style={{ color: "#1F2B22" }}
-                    >
-                      Price (₹)
-                    </label>
-                    <input
-                      type="number"
-                      name="price"
-                      min="0"
-                      step="0.01"
-                      defaultValue={editProduct?.price?.toString() || ""}
-                      required
-                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                      placeholder="Enter price"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      className="block text-sm font-medium text-[#1F2B22] mb-1"
-                      style={{ color: "#1F2B22" }}
-                    >
-                      Stock
-                    </label>
-                    <input
-                      type="number"
-                      name="stock"
-                      min="0"
-                      defaultValue={editProduct?.stock?.toString() || ""}
-                      required
-                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                      placeholder="Enter stock quantity"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      className="block text-sm font-medium text-[#1F2B22] mb-1"
-                      style={{ color: "#1F2B22" }}
-                    >
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      name="description"
-                      defaultValue={editProduct?.description || ""}
-                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                      placeholder="Enter product description"
-                    />
-                  />
-                </div>
-
-                <div className="mt-4">
-                  <label
-                    className="block text-sm font-medium text-[#1F2B22] mb-1"
-                    style={{ color: "#1F2B22" }}
-                  >
-                    Product Image
-                  </label>
-                  <input
-                    type="file"
-                    name="image"
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                    accept="image/*"
-                  />
-                  <p className="mt-2 text-xs text-gray-500">
-                    Supported: jpg, png, gif. Max 5MB.
-                  </p>
-                  {editProduct.image && (
-                    <p className="mt-1 text-xs text-blue-600">
-                      Current image: {editProduct.image.substring(editProduct.image.lastIndexOf('/') + 1)}
-                    </p>
-                  )}
-                </div>
-
+          {editProduct && (
+            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-bold" style={{ color: "#1F2B22" }}>Edit Product</h2>
+              {/* key resets the fields when a different product is picked */}
+              <form key={editProduct.id} onSubmit={handleEdit}>
+                <ProductFields product={editProduct} />
                 <div className="mt-4 flex gap-2">
                   <button
                     type="submit"
@@ -564,10 +383,7 @@ export default function AdminProductsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditId(null);
-                      setEditProduct(null);
-                    }}
+                    onClick={() => setEditProduct(null)}
                     className="flex-1 rounded-xl px-4 py-2 text-sm font-medium"
                     style={{ backgroundColor: "#6B7268", color: "white" }}
                   >
@@ -578,184 +394,52 @@ export default function AdminProductsPage() {
             </section>
           )}
 
-          {/* ADD PRODUCT FORM (simple) */}
-          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm" style={{ backgroundColor: "#FFFFFF" }}>
-            <h2
-              className="mb-4 textxl font-bold"
-              style={{ color: "#1F2B22" }}
-            >
-              Add New Product
-            </h2>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                
-                const nameInput = e.target.name as HTMLInputElement;
-                const priceInput = e.target.price as HTMLInputElement;
-                const stockInput = e.target.stock as HTMLInputElement;
-                const descInput = e.target.description as HTMLInputElement;
-                const imageInput = e.target.image as HTMLInputElement;
-                
-                const name = nameInput.value;
-                const price = Number(priceInput.value);
-                const stock = Number(stockInput.value);
-                const description = descInput.value || "";
-                const imageFile = imageInput ? imageInput.files?.[0] : null;
-
-                if (!name || !price || !stock) {
-                  setError("Please fill in all fields");
-                  return;
-                }
-
-                const formData = new FormData();
-                formData.append("name", name);
-                formData.append("price", String(price));
-                formData.append("stock", String(stock));
-                formData.append("description", description);
-                if (imageFile) {
-                  formData.append("image", imageFile);
-                }
-
-                fetch(PRODUCTS_CREATE, {
-                  method: "POST",
-                  headers: {
-                    "Authorization": `Bearer ${token}`,
-                  },
-                  body: formData,
-                })
-                  .then((res) => {
-                    if (res.status === 401) {
-                      clearAdminToken();
-                      router.push("/admin/login");
-                      return;
-                    }
-                    return res.json();
-                  })
-                  .then((data) => {
-                    setProducts([data, ...products]);
-                    setError("");
-                    // Reset form fields
-                    nameInput.value = "";
-                    priceInput.value = "";
-                    stockInput.value = "";
-                    descInput.value = "";
-                    if (imageInput) {
-                      imageInput.value = "";
-                    }
-                  })
-                  .catch((err) => {
-                    console.error(err);
-                    setError(err.message || "Failed to add product");
-                  });
-              }}
-            >
-
-              <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-4">
-                <div>
-                  <label
-                    className="block text-sm font-medium text-[#1F2B22] mb-1"
-                    style={{ color: "#1F2B22" }}
-                  >
-                    Product Name
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                    placeholder="Enter product name"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-medium text-[#1F2B22] mb-1"
-                    style={{ color: "#1F2B22" }}
-                  >
-                    Price (₹)
-                  </label>
-                  <input
-                    type="number"
-                    name="price"
-                    min="0"
-                    step="0.01"
-                    required
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                    placeholder="Enter price"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-medium text-[#1F2B22] mb-1"
-                    style={{ color: "#1F2B22" }}
-                  >
-                    Stock
-                  </label>
-                  <input
-                    type="number"
-                    name="stock"
-                    min="0"
-                    required
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                    placeholder="Enter stock quantity"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-medium text-[#1F2B22] mb-1"
-                    style={{ color: "#1F2B22" }}
-                  >
-                    Description
-                  </label>
-                  <input
-                    type="text"
-                    name="description"
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                    placeholder="Enter product description"
-                  />
-                />
-              </div>
-
-              <div className="mt-4">
-                <label
-                  className="block text-sm font-medium text-[#1F2B22] mb-1"
-                  style={{ color: "#1F2B22" }}
-                >
-                  Product Image
-                </label>
-                <input
-                  type="file"
-                  name="image"
-                  accept="image/*"
-                  className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
-                  style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                />
-                <p className="mt-2 text-xs text-gray-500">
-                  Supported: jpg, png, gif. Max 5MB.
-                </p>
-
-                <button
-                  type="submit"
-                  className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white"
-                  style={{
-                    backgroundColor: "#3F6C51",
-                    marginTop: "10px",
-                  }}
-                >
-                  Add Product
-                </button>
-              </form>
-            </section>
+          {/* ADD PRODUCT FORM */}
+          <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-xl font-bold" style={{ color: "#1F2B22" }}>Add New Product</h2>
+            <form onSubmit={handleAdd}>
+              <ProductFields />
+              <button
+                type="submit"
+                className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white"
+                style={{ backgroundColor: "#3F6C51", marginTop: "10px" }}
+              >
+                Add Product
+              </button>
+            </form>
           </section>
         </section>
       </div>
+
+      {/* DELETE CONFIRMATION */}
+      {deleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg">
+            <h3 className="text-lg font-bold" style={{ color: "#1F2B22" }}>Delete this product?</h3>
+            <p className="mt-2 text-sm" style={{ color: "#6B7268" }}>
+              This action cannot be undone.
+            </p>
+            <div className="mt-6 flex gap-2">
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="flex-1 rounded-xl px-4 py-2 text-sm font-medium text-white"
+                style={{ backgroundColor: "#C0463B" }}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteId(null)}
+                className="flex-1 rounded-xl px-4 py-2 text-sm font-medium"
+                style={{ backgroundColor: "#E5E7EB", color: "#1F2B22" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
