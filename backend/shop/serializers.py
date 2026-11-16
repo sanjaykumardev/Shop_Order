@@ -30,7 +30,7 @@ class OrderItemInputSerializer(serializers.Serializer):
 
 class OrderCreateSerializer(serializers.Serializer):
     customer_id = serializers.IntegerField()
-    items = OrderItemInputSerializer(many=True)
+    items = OrderItemInputSerializer(many=True, allow_empty=False)
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
