@@ -106,6 +106,54 @@ class ProductDeleteView(APIView):
             )
 
 
+class ProductUpdateView(APIView):
+    """PUT /api/admin/products/{id}/ — Update a product (admin only)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, product_id):
+        name = (request.data.get("name") or "").strip()
+        price = request.data.get("price")
+        stock = request.data.get("stock")
+        description = request.data.get("description")
+        image = request.data.get("image")
+
+        if not name or price is None or stock is None:
+            return Response(
+                {"detail": "name, price and stock are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            price = Decimal(str(price))
+            stock = int(stock)
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "Invalid price or stock format."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"detail": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        product.name = name
+        product.price = price
+        product.stock = stock
+        if description is not None:
+            product.description = description
+        if image is not None:
+            product.image = image
+        product.save()
+
+        serializer = ProductSerializer(product)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class CustomerRegisterView(APIView):
     """POST /api/customers/register/ — { name, phone } -> customer record.
 

@@ -21,6 +21,8 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
 
   const token = getAdminToken();
 
@@ -28,6 +30,7 @@ export default function AdminProductsPage() {
   const PRODUCTS_LIST = ENDPOINTS.products;
   const PRODUCTS_CREATE = ENDPOINTS.adminProductsCreate;
   const PRODUCTS_DELETE = (id: number) => ENDPOINTS.adminProductsDelete(id);
+  const PRODUCTS_UPDATE = (id: number) => `/api/admin/products/update/${id}/`;
 
   // Load products
   useEffect(() => {
@@ -93,6 +96,45 @@ export default function AdminProductsPage() {
         console.error(err);
         setError(err.message || "Failed to delete product");
         setDeleteId(null);
+      });
+  };
+
+  const confirmEdit = () => {
+    if (!editId || !editProduct) return;
+
+    fetch(PRODUCTS_UPDATE(editId), {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: editProduct.name,
+        price: editProduct.price,
+        stock: editProduct.stock,
+        description: editProduct.description,
+        image: editProduct.image,
+      }),
+    })
+      .then((res) => {
+        if (res.status === 401) {
+          clearAdminToken();
+          router.push("/admin/login");
+          return;
+        }
+        if (!res.ok) {
+          return res.json().then((d) => { throw new Error(d.detail || "Failed to update"); });
+        }
+        setProducts(products.map((p) => p.id === editId ? res.data : p));
+        setEditId(null);
+        setEditProduct(null);
+        setError("");
+      })
+      .catch((err) => {
+        console.error(err);
+        setError(err.message || "Failed to update product");
+        setEditId(null);
+        setEditProduct(null);
       });
   };
 
@@ -331,14 +373,28 @@ export default function AdminProductsPage() {
                             Delete
                           </button>
 
-                          {/* Edit placeholder */}
-                          <button
-                            className="text-sm text-blue-600 hover:text-blue-800"
-                            style={{ color: "#3F6C51" }}
-                            aria-label={`Edit product ${product.name}`}
-                          >
-                            Edit
-                          </button>
+                          {/* Edit button */}
+                          {editId === product.id ? (
+                            <button
+                              type="button"
+                              onClick={() => setEditId(null)}
+                              className="text-sm text-gray-600 hover:text-gray-800"
+                              style={{ color: "#6B7268" }}
+                              aria-label={`Cancel editing product ${product.name}`}
+                            >
+                              Cancel
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditProduct(product)}
+                              className="text-sm text-blue-600 hover:text-blue-800"
+                              style={{ color: "#3F6C51" }}
+                              aria-label={`Edit product ${product.name}`}
+                            >
+                              Edit
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -346,6 +402,158 @@ export default function AdminProductsPage() {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {/* EDIT PRODUCT FORM */}
+          {editId && editProduct && (
+            <section className="mt-8 rounded-2xl bg-white p-6 shadow-sm" style={{ backgroundColor: "#FFFFFF" }}>
+              <h2
+                className="mb-4 textxl font-bold"
+                style={{ color: "#1F2B22" }}
+              >
+                Edit Product
+              </h2>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const name = (e.target as any).name.value;
+                  const price = Number((e.target as any).price.value);
+                  const stock = Number((e.target as any).stock.value);
+
+                  if (!name || !price || !stock) {
+                    setError("Please fill in all fields");
+                    return;
+                  }
+
+                  setEditProduct({
+                    ...editProduct,
+                    name,
+                    price,
+                    stock,
+                    description: (e.target as any).description.value,
+                    image: (e.target as any).image.value,
+                  });
+
+                  confirmEdit();
+                }}
+              >
+
+                <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-4">
+                  <div>
+                    <label
+                      className="block text-sm font-medium text-[#1F2B22] mb-1"
+                      style={{ color: "#1F2B22" }}
+                    >
+                      Product Name
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      defaultValue={editProduct?.name || ""}
+                      required
+                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                      placeholder="Enter product name"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className="block text-sm font-medium text-[#1F2B22] mb-1"
+                      style={{ color: "#1F2B22" }}
+                    >
+                      Price (₹)
+                    </label>
+                    <input
+                      type="number"
+                      name="price"
+                      min="0"
+                      step="0.01"
+                      defaultValue={editProduct?.price?.toString() || ""}
+                      required
+                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                      placeholder="Enter price"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className="block text-sm font-medium text-[#1F2B22] mb-1"
+                      style={{ color: "#1F2B22" }}
+                    >
+                      Stock
+                    </label>
+                    <input
+                      type="number"
+                      name="stock"
+                      min="0"
+                      defaultValue={editProduct?.stock?.toString() || ""}
+                      required
+                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                      placeholder="Enter stock quantity"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className="block text-sm font-medium text-[#1F2B22] mb-1"
+                      style={{ color: "#1F2B22" }}
+                    >
+                      Description
+                    </label>
+                    <input
+                      type="text"
+                      name="description"
+                      defaultValue={editProduct?.description || ""}
+                      className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                      style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                      placeholder="Enter product description"
+                    />
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label
+                    className="block text-sm font-medium text-[#1F2B22] mb-1"
+                    style={{ color: "#1F2B22" }}
+                  >
+                    Product Image URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    name="image"
+                    defaultValue={editProduct?.image || ""}
+                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                    placeholder="Enter image URL (e.g., https://example.com/image.jpg)"
+                  />
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="submit"
+                    className="flex-1 rounded-xl px-4 py-2 text-sm font-medium text-white"
+                    style={{ backgroundColor: "#3F6C51" }}
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditId(null);
+                      setEditProduct(null);
+                    }}
+                    className="flex-1 rounded-xl px-4 py-2 text-sm font-medium"
+                    style={{ backgroundColor: "#6B7268", color: "white" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </section>
           )}
 
           {/* ADD PRODUCT FORM (simple) */}
@@ -469,7 +677,7 @@ export default function AdminProductsPage() {
                     style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
                     placeholder="Enter product description"
                   />
-                </div>
+                />
               </div>
 
               <div className="mt-4">
@@ -500,9 +708,7 @@ export default function AdminProductsPage() {
               </button>
             </form>
           </section>
-
         </section>
-
       </div>
     </main>
   );

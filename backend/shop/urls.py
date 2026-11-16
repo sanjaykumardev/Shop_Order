@@ -39,6 +39,12 @@ urlpatterns = [
         name="product-delete"
     ),
 
+    path(
+        "admin/products/update/<int:product_id>/",
+        ProductUpdateView.as_view(),
+        name="product-update"
+    ),
+
 
     # CUSTOMER
 
