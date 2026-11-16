@@ -41,7 +41,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "product_name",
             "quantity",
             "price",
-            "image",
         ]
 
 

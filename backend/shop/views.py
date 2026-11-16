@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth.models import User
 from django.contrib.auth import hashers
-
+from django.contrib.auth import authenticate
 
 # Indian mobile number: exactly 10 digits, starting 6-9.
 PHONE_REGEX = re.compile(r"^[6-9]\d{9}$")
@@ -485,7 +485,7 @@ class AdminOrderListView(generics.ListAPIView):
     )
 
     serializer_class = OrderSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
         if not self.request.user.is_staff:
