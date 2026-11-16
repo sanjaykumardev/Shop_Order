@@ -1,6 +1,8 @@
 from decimal import Decimal
 import re
-
+import base64
+from django.core.files.base import ContentFile
+from django.core.exceptions import ValidationError
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.utils import timezone
@@ -22,15 +24,6 @@ from django.contrib.auth.models import User
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-
-from .models import Product, Customer, Order, OrderItem, DailySales
-from .otp import send_admin_otp, verify_admin_otp
-from .serializers import (
-    ProductSerializer,
-    CustomerSerializer,
-    OrderCreateSerializer,
-    OrderSerializer,
-)
 
 # Indian mobile number: exactly 10 digits, starting 6-9.
 PHONE_REGEX = re.compile(r"^[6-9]\d{9}$")
@@ -61,6 +54,8 @@ class ProductCreateView(APIView):
         name = (request.data.get("name") or "").strip()
         price = request.data.get("price")
         stock = request.data.get("stock")
+        description = request.data.get("description")
+        image = request.FILES.get("image")
 
         if not name or price is None or stock is None:
             return Response(
@@ -81,29 +76,16 @@ class ProductCreateView(APIView):
             name=name,
             price=price,
             stock=stock,
+            description=description or "",
         )
+
+        # Handle image upload
+        if image:
+            product.image = image
+
+        product.save()
         serializer = ProductSerializer(product)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-class ProductDeleteView(APIView):
-    """DELETE /api/products/{id} — Delete a product (admin only)."""
-
-    permission_classes = [IsAuthenticated]
-
-    def delete(self, request, product_id):
-        try:
-            product = Product.objects.get(id=product_id)
-            product.delete()
-            return Response(
-                {"detail": "Product deleted successfully."},
-                status=status.HTTP_204_NO_CONTENT,
-            )
-        except Product.DoesNotExist:
-            return Response(
-                {"detail": "Product not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
 
 
 class ProductUpdateView(APIView):
@@ -116,7 +98,7 @@ class ProductUpdateView(APIView):
         price = request.data.get("price")
         stock = request.data.get("stock")
         description = request.data.get("description")
-        image = request.data.get("image")
+        image = request.FILES.get("image")
 
         if not name or price is None or stock is None:
             return Response(
@@ -146,12 +128,32 @@ class ProductUpdateView(APIView):
         product.stock = stock
         if description is not None:
             product.description = description
-        if image is not None:
+        if image:
             product.image = image
         product.save()
 
         serializer = ProductSerializer(product)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ProductDeleteView(APIView):
+    """DELETE /api/products/{id} — Delete a product (admin only)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, product_id):
+        try:
+            product = Product.objects.get(id=product_id)
+            product.delete()
+            return Response(
+                {"detail": "Product deleted successfully."},
+                status=status.HTTP_204_NO_CONTENT,
+            )
+        except Product.DoesNotExist:
+            return Response(
+                {"detail": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
 
 class CustomerRegisterView(APIView):
@@ -251,8 +253,7 @@ class OrderCreateView(APIView):
 
 
 class OrderPayView(APIView):
-    """
-    POST /api/orders/<order_id>/pay/
+    """POST /api/orders/<order_id>/pay/
 
     Online payment -> paid
     Cash on delivery -> remains pending
@@ -261,7 +262,6 @@ class OrderPayView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, order_id):
-
         try:
             order = Order.objects.get(id=order_id)
         except Order.DoesNotExist:
@@ -301,6 +301,7 @@ class AdminLoginView(APIView):
     def post(self, request):
         username = request.data.get("username", "").strip()
         password = request.data.get("password", "")
+
         user = authenticate(username=username, password=password)
 
         if user is None or not user.is_staff:
@@ -366,6 +367,7 @@ class AdminUserCreateView(APIView):
 
         # Send OTP to the new admin's email for 2-step verification
         try:
+            from .otp import send_admin_otp
             send_admin_otp(email)
         except Exception as e:
             logger = logging.getLogger(__name__)
@@ -374,7 +376,6 @@ class AdminUserCreateView(APIView):
             return Response(
                 {
                     "detail": "User created but failed to send OTP email. Contact shop owner.",
-                    "user_id": user.id,
                 },
                 status=status.HTTP_201_CREATED,
             )
@@ -438,7 +439,7 @@ class AdminChangeCredentialsView(APIView):
         if not user.is_staff:
             return Response(
                 {"detail": "You are not authorized to change admin credentials."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         current_password = request.data.get("current_password", "")
@@ -450,21 +451,21 @@ class AdminChangeCredentialsView(APIView):
         if not current_password:
             return Response(
                 {"detail": "Current password is required."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Check current password
         if not user.check_password(current_password):
             return Response(
                 {"detail": "Current password is incorrect."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # At least username, email or password must be changed
         if not new_username and not new_password and not new_email:
             return Response(
                 {"detail": "Enter a new username, email or new password."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Change username
@@ -478,7 +479,7 @@ class AdminChangeCredentialsView(APIView):
 
                     return Response(
                         {"detail": "This username is already taken."},
-                        status=status.HTTP_400_BAD_REQUEST
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
 
                 user.username = new_username
@@ -491,7 +492,7 @@ class AdminChangeCredentialsView(APIView):
                 if not is_valid_email(new_email):
                     return Response(
                         {"detail": "Enter a valid email address."},
-                        status=status.HTTP_400_BAD_REQUEST
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
 
                 if User.objects.filter(email__iexact=new_email).exclude(
@@ -500,7 +501,7 @@ class AdminChangeCredentialsView(APIView):
 
                     return Response(
                         {"detail": "This email is already used by another account."},
-                        status=status.HTTP_400_BAD_REQUEST
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
 
                 user.email = new_email
@@ -511,7 +512,7 @@ class AdminChangeCredentialsView(APIView):
             if len(new_password) < 8:
                 return Response(
                     {"detail": "New password must contain at least 8 characters."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             user.set_password(new_password)
@@ -520,10 +521,11 @@ class AdminChangeCredentialsView(APIView):
 
         return Response(
             {
-                "detail": "Admin credentials updated successfully."
+                "detail": "Admin credentials updated successfully.",
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
+
 
 class AdminOrderListView(generics.ListAPIView):
     """GET /api/admin/orders/ — requires a staff user's Bearer token."""
@@ -572,11 +574,11 @@ class AdminOrderDoneView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-       
 
         # Change order status
         order.status = "done"
         order.save(update_fields=["status"])
+
 
         # Get today's date using Django's configured timezone
         today = timezone.localdate()
@@ -603,11 +605,7 @@ class AdminOrderDoneView(APIView):
         daily_sales.total_amount += order.total
 
         daily_sales.save(
-            update_fields=[
-                "total_orders",
-                "total_items",
-                "total_amount",
-            ]
+            update_fields=["total_orders", "total_items", "total_amount"],
         )
 
         return Response(
@@ -668,7 +666,7 @@ class AdminDashboardView(APIView):
             except ValueError:
                 return Response(
                     {
-                        "detail": "Invalid date format. Use YYYY-MM-DD."
+                        "detail": "Invalid date format. Use YYYY-MM-DD.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -756,7 +754,7 @@ class AdminDashboardView(APIView):
             Order.objects
             .filter(
                 created_at__gte=month_start_datetime,
-                created_at__lt=next_month_datetime,
+                created_at<next_month_datetime,
             )
         )
 

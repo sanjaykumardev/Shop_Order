@@ -102,19 +102,24 @@ export default function AdminProductsPage() {
   const confirmEdit = () => {
     if (!editId || !editProduct) return;
 
+    const formData = new FormData();
+    formData.append("name", editProduct.name);
+    formData.append("price", String(editProduct.price));
+    formData.append("stock", String(editProduct.stock));
+    formData.append("description", editProduct.description || "");
+    if (editProduct.imageFile) {
+      formData.append("image", editProduct.imageFile);
+    }
+    if (editProduct.existingImage) {
+      formData.append("existingImage", editProduct.existingImage);
+    }
+
     fetch(PRODUCTS_UPDATE(editId), {
       method: "PUT",
       headers: {
         "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        name: editProduct.name,
-        price: editProduct.price,
-        stock: editProduct.stock,
-        description: editProduct.description,
-        image: editProduct.image,
-      }),
+      body: formData,
     })
       .then((res) => {
         if (res.status === 401) {
@@ -333,7 +338,7 @@ export default function AdminProductsPage() {
                       >
                         {product.image ? (
                           <img
-                            src={`/media/${product.image}`}
+                            src={product.image}
                             alt={product.name}
                             className="w-12 h-12 object-cover rounded"
                             style={{ width: "80px", height: "80px" }}
@@ -417,9 +422,18 @@ export default function AdminProductsPage() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  const name = (e.target as any).name.value;
-                  const price = Number((e.target as any).price.value);
-                  const stock = Number((e.target as any).stock.value);
+                  
+                  const nameInput = e.target.name as HTMLInputElement;
+                  const priceInput = e.target.price as HTMLInputElement;
+                  const stockInput = e.target.stock as HTMLInputElement;
+                  const descInput = e.target.description as HTMLInputElement;
+                  const imageInput = e.target.image as HTMLInputElement;
+                  
+                  const name = nameInput.value;
+                  const price = Number(priceInput.value);
+                  const stock = Number(stockInput.value);
+                  const description = descInput.value;
+                  const imageFile = imageInput ? (imageInput.files?.[0] || null) : null;
 
                   if (!name || !price || !stock) {
                     setError("Please fill in all fields");
@@ -431,8 +445,9 @@ export default function AdminProductsPage() {
                     name,
                     price,
                     stock,
-                    description: (e.target as any).description.value,
-                    image: (e.target as any).image.value,
+                    description,
+                    imageFile,
+                    existingImage: editProduct.image || "",
                   });
 
                   confirmEdit();
@@ -520,16 +535,23 @@ export default function AdminProductsPage() {
                     className="block text-sm font-medium text-[#1F2B22] mb-1"
                     style={{ color: "#1F2B22" }}
                   >
-                    Product Image URL (optional)
+                    Product Image
                   </label>
                   <input
-                    type="text"
+                    type="file"
                     name="image"
-                    defaultValue={editProduct?.image || ""}
                     className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
                     style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                    placeholder="Enter image URL (e.g., https://example.com/image.jpg)"
+                    accept="image/*"
                   />
+                  <p className="mt-2 text-xs text-gray-500">
+                    Supported: jpg, png, gif. Max 5MB.
+                  </p>
+                  {editProduct.image && (
+                    <p className="mt-1 text-xs text-blue-600">
+                      Current image: {editProduct.image.substring(editProduct.image.lastIndexOf('/') + 1)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-4 flex gap-2">
@@ -568,22 +590,39 @@ export default function AdminProductsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const name = (e.target as any).name.value;
-                const price = Number((e.target as any).price.value);
-                const stock = Number((e.target as any).stock.value);
+                
+                const nameInput = e.target.name as HTMLInputElement;
+                const priceInput = e.target.price as HTMLInputElement;
+                const stockInput = e.target.stock as HTMLInputElement;
+                const descInput = e.target.description as HTMLInputElement;
+                const imageInput = e.target.image as HTMLInputElement;
+                
+                const name = nameInput.value;
+                const price = Number(priceInput.value);
+                const stock = Number(stockInput.value);
+                const description = descInput.value || "";
+                const imageFile = imageInput ? imageInput.files?.[0] : null;
 
                 if (!name || !price || !stock) {
                   setError("Please fill in all fields");
                   return;
                 }
 
+                const formData = new FormData();
+                formData.append("name", name);
+                formData.append("price", String(price));
+                formData.append("stock", String(stock));
+                formData.append("description", description);
+                if (imageFile) {
+                  formData.append("image", imageFile);
+                }
+
                 fetch(PRODUCTS_CREATE, {
                   method: "POST",
                   headers: {
                     "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json",
                   },
-                  body: JSON.stringify({ name, price, stock, description: (e.target as any).description.value, image: (e.target as any).image.value }),
+                  body: formData,
                 })
                   .then((res) => {
                     if (res.status === 401) {
@@ -597,9 +636,13 @@ export default function AdminProductsPage() {
                     setProducts([data, ...products]);
                     setError("");
                     // Reset form fields
-                    (e.target as any).name.value = "";
-                    (e.target as any).price.value = "";
-                    (e.target as any).stock.value = "";
+                    nameInput.value = "";
+                    priceInput.value = "";
+                    stockInput.value = "";
+                    descInput.value = "";
+                    if (imageInput) {
+                      imageInput.value = "";
+                    }
                   })
                   .catch((err) => {
                     console.error(err);
@@ -685,28 +728,31 @@ export default function AdminProductsPage() {
                   className="block text-sm font-medium text-[#1F2B22] mb-1"
                   style={{ color: "#1F2B22" }}
                 >
-                  Product Image URL (optional)
+                  Product Image
                 </label>
                 <input
-                  type="text"
+                  type="file"
                   name="image"
+                  accept="image/*"
                   className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
                   style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
-                  placeholder="Enter image URL (e.g., https://example.com/image.jpg)"
                 />
-              </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Supported: jpg, png, gif. Max 5MB.
+                </p>
 
-              <button
-                type="submit"
-                className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white"
-                style={{
-                  backgroundColor: "#3F6C51",
-                  marginTop: "10px",
-                }}
-              >
-                Add Product
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  className="w-full rounded-xl px-4 py-3 text-sm font-medium text-white"
+                  style={{
+                    backgroundColor: "#3F6C51",
+                    marginTop: "10px",
+                  }}
+                >
+                  Add Product
+                </button>
+              </form>
+            </section>
           </section>
         </section>
       </div>
