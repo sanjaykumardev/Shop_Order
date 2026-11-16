@@ -264,7 +264,7 @@ export default function AdminProductsPage() {
                           fontWeight: "500",
                         }}
                       >
-                        ₹{product.price.toFixed(2)}
+                        ₹{Number(product.price).toFixed(2)}
                       </td>
                       <td
                         style={{
@@ -273,7 +273,7 @@ export default function AdminProductsPage() {
                           fontWeight: "500",
                         }}
                       >
-                        {product.stock}
+                        {Number(product.stock)}
                       </td>
                       <td
                         style={{
