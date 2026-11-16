@@ -1,10 +1,9 @@
 from rest_framework import serializers
+import os
 from .models import Product, Customer, Order, OrderItem
 
 
 class ProductSerializer(serializers.ModelSerializer):
-
-    image = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -16,17 +15,6 @@ class ProductSerializer(serializers.ModelSerializer):
             "stock",
             "image",
         ]
-
-    def get_image(self, obj):
-        request = self.context.get("request")
-
-        if obj.image:
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-
-            return obj.image.url
-
-        return None
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -42,14 +30,10 @@ class OrderItemInputSerializer(serializers.Serializer):
 
 class OrderCreateSerializer(serializers.Serializer):
     customer_id = serializers.IntegerField()
-    items = OrderItemInputSerializer(many=True)
+    items = OrderItemInputSerializer(many=True, allow_empty=False)
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    image = serializers.ImageField(
-        source="product.image",
-        read_only=True
-    )
 
     class Meta:
         model = OrderItem
@@ -57,10 +41,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "product_name",
             "quantity",
             "price",
-            "image",
         ]
 
+
 class OrderSerializer(serializers.ModelSerializer):
+
     """Used for the admin order list — includes customer name/phone and items."""
 
     customer_name = serializers.CharField(source="customer.name", read_only=True)

@@ -77,3 +77,27 @@ class DailySales(models.Model):
 
     def __str__(self):
         return f"{self.date} - ₹{self.total_amount}"
+
+
+class AdminOTP(models.Model):
+    """One-time password for admin 2-step login.
+
+    An OTP is hashed (never stored in plain text), expires after
+    OTP_LIFETIME_MINUTES, and can only be used once.
+
+    After successful verification, `email_verified` is set to True
+    and persists across logins so OTP is not required again.
+    """
+
+    email = models.EmailField(db_index=True)
+    otp_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"OTP for {self.email} (used={self.is_used}, verified={self.email_verified})"

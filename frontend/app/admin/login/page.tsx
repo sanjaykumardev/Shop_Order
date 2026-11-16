@@ -10,10 +10,11 @@ export default function AdminLoginPage() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
 
     setError("");
@@ -22,18 +23,15 @@ export default function AdminLoginPage() {
     try {
       const res = await apiFetch(ENDPOINTS.adminLogin, {
         method: "POST",
-        body: JSON.stringify({
-          username,
-          password,
-        }),
+        body: JSON.stringify({ username, password }),
       });
 
       setAdminToken(res.token);
-
       router.push("/admin/orders");
     } catch (err) {
       console.error(err);
-      setError("Invalid username or password.");
+      const message = err instanceof Error ? err.message : "Login failed.";
+      setError(message.includes("Invalid credentials") ? "Invalid username or password." : message);
     } finally {
       setSubmitting(false);
     }
@@ -51,17 +49,13 @@ export default function AdminLoginPage() {
           Shop admin login
         </h1>
 
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-4"
-        >
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
 
           {/* Username */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#1F2B22]">
+            <label className="mb-1 block text-sm font-medium text-[#3F6C51]">
               Username
             </label>
-
             <input
               className="w-full rounded-[10px] border border-[#D8D9CC] bg-white px-3.5 py-3 text-[15px] outline-none focus:border-[#3F6C51]"
               value={username}
@@ -73,10 +67,9 @@ export default function AdminLoginPage() {
 
           {/* Password */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#1F2B22]">
+            <label className="mb-1 block text-sm font-medium text-[#3F6C51]">
               Password
             </label>
-
             <input
               className="w-full rounded-[10px] border border-[#D8D9CC] bg-white px-3.5 py-3 text-[15px] outline-none focus:border-[#3F6C51]"
               type="password"
@@ -87,14 +80,8 @@ export default function AdminLoginPage() {
             />
           </div>
 
-          {/* Error */}
-          {error && (
-            <p className="text-sm text-[#C0463B]">
-              {error}
-            </p>
-          )}
+          {error && <p className="text-sm text-[#C0463B]">{error}</p>}
 
-          {/* Login button */}
           <button
             type="submit"
             disabled={submitting}
@@ -102,7 +89,6 @@ export default function AdminLoginPage() {
           >
             {submitting ? "Signing in..." : "Sign in"}
           </button>
-
         </form>
       </div>
     </main>

@@ -10,13 +10,16 @@ export const API_BASE =
 
 export const ENDPOINTS = {
   products: `${API_BASE}/products/`,
+  adminProductsCreate: `${API_BASE}/admin/products/create/`,
+  adminProductsDelete: (id: number) => `${API_BASE}/admin/products/delete/${id}/`,
   registerCustomer: `${API_BASE}/customers/register/`,
   createOrder: `${API_BASE}/orders/`,
   payOrder: (orderId: number | string) => `${API_BASE}/orders/${orderId}/pay/`,
   adminLogin: `${API_BASE}/admin/login/`,
   adminOrders: `${API_BASE}/admin/orders/`,
   adminDashboard: `${API_BASE}/admin/dashboard/`,
-  adminChangeCredentials:`${API_BASE}/admin/change-credentials/`, 
+  adminChangeCredentials: `${API_BASE}/admin/change-credentials/`,
+  adminCreateUser: `${API_BASE}/admin/create-user/`,
 };
 
 export async function apiFetch(url: string, options: RequestInit = {}) {

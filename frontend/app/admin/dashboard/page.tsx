@@ -360,6 +360,18 @@ export default function AdminDashboardPage() {
               Settings
             </button>
              
+               {/* ADD PRODUCT BUTTON */}
+            <button
+              onClick={() => router.push("/admin/products")}
+              className="rounded-xl px-4 py-2 text-sm font-medium text-white"
+              style={{
+                backgroundColor: "#1F2B22",
+                color: "#FFFFFF",
+              }}
+            >
+              Add Product
+            </button>
+
                {/* LOG OUT */}
             <button
               onClick={handleLogout}

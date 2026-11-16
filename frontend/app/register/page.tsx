@@ -23,6 +23,13 @@ export default function RegisterPage() {
       return;
     }
 
+    const cleanPhone = phone.replace(/\s+/g, "");
+
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      setError("Enter a valid 10-digit mobile number (starts with 6-9).");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -30,7 +37,7 @@ export default function RegisterPage() {
         method: "POST",
         body: JSON.stringify({
           name: name.trim(),
-          phone: phone.trim(),
+          phone: cleanPhone,
         }),
       });
 
