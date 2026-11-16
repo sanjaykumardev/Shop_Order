@@ -6,14 +6,14 @@ def setup_env():
     print("=" * 50)
     print()
     print("This script will configure email settings for OTP delivery.")
-    print("You'll need your Gmail address and an App Password.")
+    print("You'll need your email address and an SMTP password.")
     print()
-    print("If you dont have an App Password:")
-    print("1. Go to Google Account Security App Passwords")
-    print("2. Generate a 16-character password")
+    print("If you dont have an SMTP password:")
+    print("1. Configure your SMTP service credentials")
+    print("2. Get your 16-character password from your email provider")
     print()
-    email = input("Enter your Gmail address: ").strip()
-    password = input("Enter your Gmail App Password: ").strip()
+    email = input("Enter your email address: ").strip()
+    password = input("Enter your SMTP App Password: ").strip()
 
     env_content = f"""DJANGO_SECRET_KEY=yVBn6H2TwL0s9wv4avsGMsz9oGP9eayvNFS97KIGf34DvnutDX
 DEBUG=False
@@ -29,7 +29,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 # --- Email configuration for OTP delivery ---
 # To send real emails in production, EMAIL_BACKEND is set in settings.py automatically.
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.gmail.com
+EMAIL_HOST=smtp.example.com
 EMAIL_PORT=587
 EMAIL_HOST_USER={email}
 EMAIL_HOST_PASSWORD={password}
@@ -44,7 +44,7 @@ DEFAULT_FROM_EMAIL={email}
     print()
     print("✅ .env file created successfully!")
     print()
-    print("The OTP system will now send codes via Gmail SMTP")
+    print("The OTP system will now send codes via SMTP")
     print("instead of printing to the terminal.")
     print()
     print("You can now start the server and test the admin login flow.")

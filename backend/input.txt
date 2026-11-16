@@ -1,2 +1,2 @@
-test@gmail.com
+test@example.com
 apppassword123
