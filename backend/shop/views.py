@@ -7,7 +7,7 @@ from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from datetime import datetime, time
 from .models import Product, Order, Customer, DailySales, OrderItem
-from .serializers import ProductSerializer, OrderSerializer
+from .serializers import ProductSerializer, OrderSerializer, CustomerSerializer
 
 from rest_framework import status, generics, permissions
 from rest_framework.permissions import IsAuthenticated
