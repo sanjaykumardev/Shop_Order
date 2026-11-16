@@ -52,6 +52,60 @@ class ProductListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
 
 
+class ProductCreateView(APIView):
+    """POST /api/products/ — Create a new product (admin only)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        name = (request.data.get("name") or "").strip()
+        price = request.data.get("price")
+        stock = request.data.get("stock")
+
+        if not name or price is None or stock is None:
+            return Response(
+                {"detail": "name, price and stock are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            price = Decimal(str(price))
+            stock = int(stock)
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "Invalid price or stock format."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        product = Product.objects.create(
+            name=name,
+            price=price,
+            stock=stock,
+        )
+        serializer = ProductSerializer(product)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ProductDeleteView(APIView):
+    """DELETE /api/products/{id} — Delete a product (admin only)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, product_id):
+        try:
+            product = Product.objects.get(id=product_id)
+            product.delete()
+            return Response(
+                {"detail": "Product deleted successfully."},
+                status=status.HTTP_204_NO_CONTENT,
+            )
+        except Product.DoesNotExist:
+            return Response(
+                {"detail": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+
 class CustomerRegisterView(APIView):
     """POST /api/customers/register/ — { name, phone } -> customer record.
 

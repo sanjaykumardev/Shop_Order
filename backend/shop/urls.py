@@ -4,6 +4,8 @@ from .views import (
     AdminChangeCredentialsView,
     AdminUserCreateView,
     ProductListView,
+    ProductCreateView,
+    ProductDeleteView,
     CustomerRegisterView,
     OrderCreateView,
     OrderPayView,
@@ -23,6 +25,18 @@ urlpatterns = [
         "products/",
         ProductListView.as_view(),
         name="products"
+    ),
+
+    path(
+        "admin/products/create/",
+        ProductCreateView.as_view(),
+        name="product-create"
+    ),
+
+    path(
+        "admin/products/delete/<int:product_id>/",
+        ProductDeleteView.as_view(),
+        name="product-delete"
     ),
 
 
