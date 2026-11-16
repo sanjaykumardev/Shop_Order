@@ -168,6 +168,7 @@ export default function AdminProductsPage() {
                         textTransform: "uppercase",
                         color: "#6B7268",
                         fontWeight: "600",
+                        width: "150px",
                       }}
                     >
                       Name
@@ -180,6 +181,7 @@ export default function AdminProductsPage() {
                         textTransform: "uppercase",
                         color: "#6B7268",
                         fontWeight: "600",
+                        width: "100px",
                       }}
                     >
                       Price
@@ -192,9 +194,36 @@ export default function AdminProductsPage() {
                         textTransform: "uppercase",
                         color: "#6B7268",
                         fontWeight: "600",
+                        width: "80px",
                       }}
                     >
                       Stock
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        fontSize: "0.75rem",
+                        textTransform: "uppercase",
+                        color: "#6B7268",
+                        fontWeight: "600",
+                        width: "200px",
+                      }}
+                    >
+                      Description
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        fontSize: "0.75rem",
+                        textTransform: "uppercase",
+                        color: "#6B7268",
+                        fontWeight: "600",
+                        width: "120px",
+                      }}
+                    >
+                      Image
                     </th>
                     <th
                       style={{
@@ -245,6 +274,45 @@ export default function AdminProductsPage() {
                         }}
                       >
                         {product.stock}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          color: "#1F2B22",
+                        }}
+                      >
+                        {product.description ? product.description.substring(0, 50) + "..." : "No description"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          textAlign: "center",
+                        }}
+                      >
+                        {product.image ? (
+                          <img
+                            src={`/media/${product.image}`}
+                            alt={product.name}
+                            className="w-12 h-12 object-cover rounded"
+                            style={{ width: "80px", height: "80px" }}
+                          />
+                        ) : (
+                          <div
+                            className="w-12 h-12 rounded-bg"
+                            style={{
+                              width: "80px",
+                              height: "80px",
+                              backgroundColor: "#E5E7EB",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#6B7268",
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            No image
+                          </div>
+                        )}
                       </td>
                       <td
                         style={{
@@ -307,7 +375,7 @@ export default function AdminProductsPage() {
                     "Authorization": `Bearer ${token}`,
                     "Content-Type": "application/json",
                   },
-                  body: JSON.stringify({ name, price, stock }),
+                  body: JSON.stringify({ name, price, stock, description: (e.target as any).description.value, image: (e.target as any).image.value }),
                 })
                   .then((res) => {
                     if (res.status === 401) {
@@ -332,7 +400,7 @@ export default function AdminProductsPage() {
               }}
             >
 
-              <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-4">
                 <div>
                   <label
                     className="block text-sm font-medium text-[#1F2B22] mb-1"
@@ -386,6 +454,38 @@ export default function AdminProductsPage() {
                     placeholder="Enter stock quantity"
                   />
                 </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-medium text-[#1F2B22] mb-1"
+                    style={{ color: "#1F2B22" }}
+                  >
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    name="description"
+                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                    style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                    placeholder="Enter product description"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label
+                  className="block text-sm font-medium text-[#1F2B22] mb-1"
+                  style={{ color: "#1F2B22" }}
+                >
+                  Product Image URL (optional)
+                </label>
+                <input
+                  type="text"
+                  name="image"
+                  className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+                  style={{ borderColor: "#D8D9CC", color: "#1F2B22" }}
+                  placeholder="Enter image URL (e.g., https://example.com/image.jpg)"
+                />
               </div>
 
               <button
