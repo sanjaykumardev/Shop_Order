@@ -6,6 +6,7 @@ from .views import (
     ProductListView,
     ProductCreateView,
     ProductDeleteView,
+    ProductUpdateView,
     CustomerRegisterView,
     OrderCreateView,
     OrderPayView,

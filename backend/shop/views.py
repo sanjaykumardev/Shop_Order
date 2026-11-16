@@ -1,28 +1,22 @@
 from decimal import Decimal
 import re
-import base64
-from django.core.files.base import ContentFile
-from django.core.exceptions import ValidationError
-from django.contrib.auth import authenticate
+from django.contrib import auth
 from django.db import transaction
 from django.utils import timezone
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from datetime import datetime, time
-
-import logging
+from .models import Product, Order, Customer, DailySales, OrderItem
+from .serializers import ProductSerializer, OrderSerializer
 
 from rest_framework import status, generics, permissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth.models import User
 from django.contrib.auth import hashers
-
-
-from django.contrib.auth.models import User
-from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 # Indian mobile number: exactly 10 digits, starting 6-9.
@@ -54,7 +48,7 @@ class ProductCreateView(APIView):
         name = (request.data.get("name") or "").strip()
         price = request.data.get("price")
         stock = request.data.get("stock")
-        description = request.data.get("description")
+        description = request.data.get("description", "")
         image = request.FILES.get("image")
 
         if not name or price is None or stock is None:
@@ -76,7 +70,7 @@ class ProductCreateView(APIView):
             name=name,
             price=price,
             stock=stock,
-            description=description or "",
+            description=description,
         )
 
         # Handle image upload
@@ -97,7 +91,7 @@ class ProductUpdateView(APIView):
         name = (request.data.get("name") or "").strip()
         price = request.data.get("price")
         stock = request.data.get("stock")
-        description = request.data.get("description")
+        description = request.data.get("description", "")
         image = request.FILES.get("image")
 
         if not name or price is None or stock is None:
@@ -126,7 +120,7 @@ class ProductUpdateView(APIView):
         product.name = name
         product.price = price
         product.stock = stock
-        if description is not None:
+        if description:
             product.description = description
         if image:
             product.image = image
@@ -157,12 +151,7 @@ class ProductDeleteView(APIView):
 
 
 class CustomerRegisterView(APIView):
-    """POST /api/customers/register/ — { name, phone } -> customer record.
-
-    Re-registering with a phone number already on file updates the name
-    and returns the existing customer, rather than erroring, since the
-    same person may order more than once.
-    """
+    """POST /api/customers/register/ — { name, phone } -> customer record."""
 
     permission_classes = [permissions.AllowAny]
 
@@ -174,13 +163,11 @@ class CustomerRegisterView(APIView):
                 {"detail": "name and phone are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         if not PHONE_REGEX.match(phone):
             return Response(
                 {"detail": "Enter a valid 10-digit mobile number."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         customer, _ = Customer.objects.update_or_create(
             phone=phone, defaults={"name": name}
         )
@@ -188,12 +175,7 @@ class CustomerRegisterView(APIView):
 
 
 class OrderCreateView(APIView):
-    """POST /api/orders/ — { customer_id, items: [{product_id, quantity}] }.
-
-    Validates stock, snapshots product name/price onto each order item,
-    decrements stock, and computes the total server-side (never trusts a
-    client-supplied price).
-    """
+    """POST /api/orders/ — { customer_id, items: [{product_id, quantity}] }."""
 
     permission_classes = [permissions.AllowAny]
 
@@ -253,11 +235,7 @@ class OrderCreateView(APIView):
 
 
 class OrderPayView(APIView):
-    """POST /api/orders/<order_id>/pay/
-
-    Online payment -> paid
-    Cash on delivery -> remains pending
-    """
+    """POST /api/orders/<order_id>/pay/"""
 
     permission_classes = [permissions.AllowAny]
 
@@ -274,8 +252,6 @@ class OrderPayView(APIView):
 
         order.payment_method = method
 
-        # Cash on Delivery -> order stays pending until the owner delivers.
-        # Every other method (upi, online, card, ...) -> paid immediately.
         if method in ("cash_on_delivery", "cod"):
             order.status = "pending"
         else:
@@ -294,7 +270,7 @@ class OrderPayView(APIView):
 
 
 class AdminLoginView(APIView):
-    """POST /api/admin/login/ — simple username/password login, returns JWT."""
+    """POST /api/admin/login/ — simple username/password login."""
 
     permission_classes = [permissions.AllowAny]
 
@@ -323,12 +299,7 @@ class AdminLoginView(APIView):
 
 
 class AdminUserCreateView(APIView):
-    """POST /api/admin/create-user/ — Create a new admin user with username, email, and password.
-
-    Request body: { username, email, password }
-    The new user will have is_staff=True so they can access the admin API.
-    A verification email with OTP will be sent to the new user's email.
-    """
+    """POST /api/admin/create-user/ — Create a new admin user."""
 
     permission_classes = [permissions.AllowAny]
 
@@ -372,7 +343,6 @@ class AdminUserCreateView(APIView):
         except Exception as e:
             logger = logging.getLogger(__name__)
             logger.error("Failed to send OTP to new admin %s: %s", email, str(e))
-            # User was created but OTP failed - still return success but warn
             return Response(
                 {
                     "detail": "User created but failed to send OTP email. Contact shop owner.",
@@ -392,10 +362,7 @@ class AdminUserCreateView(APIView):
 
 
 class AdminOtpVerifyView(APIView):
-    """POST /api/admin/verify-otp/ — step 2 of 2.
-
-    { email, otp } -> verifies the one-time code and returns the JWT.
-    """
+    """POST /api/admin/verify-otp/ — step 2 of 2."""
 
     permission_classes = [permissions.AllowAny]
 
@@ -427,15 +394,14 @@ class AdminOtpVerifyView(APIView):
 
 
 class AdminChangeCredentialsView(APIView):
+    """POST /api/admin/change-credentials/ — Change admin credentials."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-
         user = request.user
 
-        # Only admin/staff users can change admin credentials
         if not user.is_staff:
             return Response(
                 {"detail": "You are not authorized to change admin credentials."},
@@ -447,82 +413,63 @@ class AdminChangeCredentialsView(APIView):
         new_password = request.data.get("new_password", "")
         new_email = (request.data.get("email", "") or "").strip()
 
-        # Current password is required
         if not current_password:
             return Response(
                 {"detail": "Current password is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check current password
         if not user.check_password(current_password):
             return Response(
                 {"detail": "Current password is incorrect."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # At least username, email or password must be changed
         if not new_username and not new_password and not new_email:
             return Response(
                 {"detail": "Enter a new username, email or new password."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Change username
         if new_username:
-
             if new_username != user.username:
-
                 if User.objects.filter(username=new_username).exclude(
                     id=user.id
                 ).exists():
-
                     return Response(
                         {"detail": "This username is already taken."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-
                 user.username = new_username
 
-        # Change email (must be a real email address)
         if new_email:
-
             if new_email.lower() != user.email.lower():
-
                 if not is_valid_email(new_email):
                     return Response(
                         {"detail": "Enter a valid email address."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-
                 if User.objects.filter(email__iexact=new_email).exclude(
                     id=user.id
                 ).exists():
-
                     return Response(
                         {"detail": "This email is already used by another account."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-
                 user.email = new_email
 
-        # Change password
         if new_password:
-
             if len(new_password) < 8:
                 return Response(
                     {"detail": "New password must contain at least 8 characters."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
             user.set_password(new_password)
 
         user.save()
 
         return Response(
-            {
-                "detail": "Admin credentials updated successfully.",
-            },
+            {"detail": "Admin credentials updated successfully."},
             status=status.HTTP_200_OK,
         )
 
@@ -548,24 +495,17 @@ class AdminOrderListView(generics.ListAPIView):
 
 
 class AdminOrderDoneView(APIView):
-    """
-    PATCH /api/admin/orders/<order_id>/done/
-
-    Marks an order as completed and updates the DailySales record.
-    """
+    """PATCH /api/admin/orders/<order_id>/done/"""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, order_id):
-
-        # Check admin/staff permission
         if not request.user.is_staff:
             return Response(
                 {"detail": "Admin access required."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Find the order
         try:
             order = Order.objects.prefetch_related("items").get(id=order_id)
         except Order.DoesNotExist:
@@ -574,36 +514,20 @@ class AdminOrderDoneView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-
-        # Change order status
         order.status = "done"
         order.save(update_fields=["status"])
 
-
-        # Get today's date using Django's configured timezone
         today = timezone.localdate()
+        items_count = sum(item.quantity for item in order.items.all())
 
-        # Calculate number of items in this order
-        items_count = sum(
-            item.quantity
-            for item in order.items.all()
-        )
-
-        # Get or create today's sales record
         daily_sales, created = DailySales.objects.get_or_create(
             date=today,
-            defaults={
-                "total_orders": 0,
-                "total_items": 0,
-                "total_amount": Decimal("0.00"),
-            },
+            defaults={"total_orders": 0, "total_items": 0, "total_amount": Decimal("0.00")},
         )
 
-        # Add this completed order to today's totals
         daily_sales.total_orders += 1
         daily_sales.total_items += items_count
         daily_sales.total_amount += order.total
-
         daily_sales.save(
             update_fields=["total_orders", "total_items", "total_amount"],
         )
@@ -624,72 +548,36 @@ class AdminOrderDoneView(APIView):
 
 
 class AdminDashboardView(APIView):
-    """
-    GET /api/admin/dashboard/
-
-    Returns:
-    - selected date
-    - daily order count
-    - daily sales
-    - monthly order count
-    - monthly sales
-    - all orders for the selected date
-    """
+    """GET /api/admin/dashboard/"""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-
-        # -----------------------------------------
-        # ADMIN CHECK
-        # -----------------------------------------
-
         if not request.user.is_staff:
             return Response(
                 {"detail": "Admin access required."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # -----------------------------------------
-        # SELECTED DATE
-        # -----------------------------------------
-
         date_string = request.query_params.get("date")
 
         if date_string:
             try:
-                selected_date = datetime.strptime(
-                    date_string,
-                    "%Y-%m-%d"
-                ).date()
-
+                selected_date = datetime.strptime(date_string, "%Y-%m-%d").date()
             except ValueError:
                 return Response(
-                    {
-                        "detail": "Invalid date format. Use YYYY-MM-DD.",
-                    },
+                    {"detail": "Invalid date format. Use YYYY-MM-DD."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
         else:
             selected_date = timezone.localdate()
 
-        # -----------------------------------------
-        # SELECTED DATE ORDERS
-        # -----------------------------------------
-
         start_datetime = timezone.make_aware(
-            datetime.combine(
-                selected_date,
-                time.min
-            )
+            datetime.combine(selected_date, time.min)
         )
 
         end_datetime = timezone.make_aware(
-            datetime.combine(
-                selected_date,
-                time.max
-            )
+            datetime.combine(selected_date, time.max)
         )
 
         orders = (
@@ -703,83 +591,45 @@ class AdminDashboardView(APIView):
             .order_by("-created_at")
         )
 
-        # -----------------------------------------
-        # DAILY CALCULATION
-        # -----------------------------------------
-
         daily_order_count = orders.count()
-
-        daily_total_sales = sum(
-            (order.total for order in orders),
-            Decimal("0.00")
-        )
-
-        # -----------------------------------------
-        # MONTH START
-        # -----------------------------------------
+        daily_total_sales = sum((order.total for order in orders), Decimal("0.00"))
 
         month_start = selected_date.replace(day=1)
 
         if selected_date.month == 12:
             next_month = selected_date.replace(
-                year=selected_date.year + 1,
-                month=1,
-                day=1,
+                year=selected_date.year + 1, month=1, day=1,
             )
         else:
             next_month = selected_date.replace(
-                month=selected_date.month + 1,
-                day=1,
+                month=selected_date.month + 1, day=1,
             )
 
         month_start_datetime = timezone.make_aware(
-            datetime.combine(
-                month_start,
-                time.min
-            )
+            datetime.combine(month_start, time.min)
         )
 
         next_month_datetime = timezone.make_aware(
-            datetime.combine(
-                next_month,
-                time.min
-            )
+            datetime.combine(next_month, time.min)
         )
-
-        # -----------------------------------------
-        # MONTHLY ORDERS
-        # -----------------------------------------
 
         monthly_orders = (
             Order.objects
             .filter(
                 created_at__gte=month_start_datetime,
-                created_at<next_month_datetime,
+                created_at__lt=next_month_datetime,
             )
         )
 
         monthly_order_count = monthly_orders.count()
-
-        monthly_total_sales = sum(
-            (
-                order.total
-                for order in monthly_orders
-            ),
-            Decimal("0.00")
-        )
-
-        # -----------------------------------------
-        # SERIALIZE ORDERS
-        # -----------------------------------------
+        monthly_total_sales = sum((order.total for order in monthly_orders), Decimal("0.00"))
 
         order_data = []
 
         for order in orders:
-
             items_data = []
 
             for item in order.items.all():
-
                 items_data.append(
                     {
                         "product_name": item.product_name,
@@ -800,30 +650,18 @@ class AdminDashboardView(APIView):
                 }
             )
 
-        # -----------------------------------------
-        # RESPONSE
-        # -----------------------------------------
-
         return Response(
             {
                 "today": str(timezone.localdate()),
-
                 "selected_date": str(selected_date),
-
                 "daily": {
                     "order_count": daily_order_count,
-                    "total_sales": str(
-                        daily_total_sales
-                    ),
+                    "total_sales": str(daily_total_sales),
                 },
-
                 "monthly": {
                     "order_count": monthly_order_count,
-                    "total_sales": str(
-                        monthly_total_sales
-                    ),
+                    "total_sales": str(monthly_total_sales),
                 },
-
                 "orders": order_data,
             },
             status=status.HTTP_200_OK,
