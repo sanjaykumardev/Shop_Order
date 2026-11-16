@@ -10,6 +10,8 @@ export const API_BASE =
 
 export const ENDPOINTS = {
   products: `${API_BASE}/products/`,
+  adminProductsCreate: `${API_BASE}/admin/products/create/`,
+  adminProductsDelete: (id: number) => `${API_BASE}/admin/products/delete/${id}/`,
   registerCustomer: `${API_BASE}/customers/register/`,
   createOrder: `${API_BASE}/orders/`,
   payOrder: (orderId: number | string) => `${API_BASE}/orders/${orderId}/pay/`,

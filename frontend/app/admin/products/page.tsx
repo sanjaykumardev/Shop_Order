@@ -25,9 +25,9 @@ export default function AdminProductsPage() {
   const token = getAdminToken();
 
   // Product API paths
-  const PRODUCTS_LIST = "/api/products/";
-  const PRODUCTS_CREATE = "/api/admin/products/create/";
-  const PRODUCTS_DELETE = (id: number) => `/api/admin/products/delete/${id}/`;
+  const PRODUCTS_LIST = ENDPOINTS.products;
+  const PRODUCTS_CREATE = ENDPOINTS.adminProductsCreate;
+  const PRODUCTS_DELETE = (id: number) => ENDPOINTS.adminProductsDelete(id);
 
   // Load products
   useEffect(() => {
