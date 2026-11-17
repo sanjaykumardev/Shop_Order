@@ -10,6 +10,10 @@ type Status = "idle" | "placing" | "paying" | "done" | "error";
 export default function CheckoutPage() {
   const router = useRouter();
   const [cart, setCart] = useState<CartItem[]>([]);
+  const handleBack = () => {
+    // Go back to products page during checkout
+    router.push("/products");
+  };
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [method, setMethod] = useState<"upi" | "cod">("upi");
@@ -92,7 +96,7 @@ export default function CheckoutPage() {
                 Order placed
               </p>
               <p className="mt-2 text-sm" style={{ color: "#6B7268" }}>
-                We&apos;ve received your order and payment.
+                We've received your order and payment.
               </p>
               <button
                 onClick={() => router.push("/products")}
@@ -126,6 +130,15 @@ export default function CheckoutPage() {
                     ₹{total.toFixed(2)}
                   </span>
                 </div>
+              </div>
+
+              <div className="mb-4">
+                <button
+                  onClick={handleBack}
+                  className="op-btn op-display w-full rounded-xl px-4 py-3 text-sm font-semibold text-[#1F2B22] transition hover:bg-[#D8D9CC] active:scale-[0.98]"
+                >
+                  ← Back to products
+                </button>
               </div>
 
               <p className="mb-2 text-sm font-medium" style={{ color: "#1F2B22" }}>

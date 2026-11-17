@@ -38,7 +38,7 @@ export default function CartPage() {
             className="op-tag mb-6 text-sm"
             style={{ color: "#3F6C51" }}
           >
-            ← Back to shop
+            ← Back to products
           </button>
 
           <h1 className="op-display mb-6 text-3xl font-bold" style={{ color: "#1F2B22" }}>

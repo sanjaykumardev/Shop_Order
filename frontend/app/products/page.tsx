@@ -25,6 +25,11 @@ interface Product {
 export default function ProductsPage() {
   const router = useRouter();
 
+  const handleExit = () => {
+    // Navigate to register/login page
+    router.push("/register");
+  };
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [cartQty, setCartQty] = useState(0);
@@ -172,27 +177,42 @@ export default function ProductsPage() {
             >
               Order List
             </h1>
+
+           
           </div>
+          
+          {/* EXIT BUTTON */}
+          <div className="mt-2 flex justify-start gap-4">
+                <button
+                  onClick={handleExit}
+                  className="rounded-xl bg-[#C0463B] px-4 py-3 space-2 text-sm font-medium text-white transition hover:bg-[#E05757] active:scale-[0.98]"
+                >
+                  Exit
+                </button>
 
-          {/* CART BUTTON */}
+                  {/* CART BUTTON */}
+              
+              <button
+                onClick={() => router.push("/cart")}
+                className="
+                  rounded-xl
+                  px-4
+                  py-2
+                  text-sm
+                  font-medium
+                  text-white
+                "
+                style={{
+                  backgroundColor: "#1F2B22",
+                }}
+              >
+                View cart ({cartQty})
+              </button>
+          </div>
+        
+          </header>
 
-          <button
-            onClick={() => router.push("/cart")}
-            className="
-              rounded-xl
-              px-4
-              py-2
-              text-sm
-              font-medium
-              text-white
-            "
-            style={{
-              backgroundColor: "#1F2B22",
-            }}
-          >
-            View cart ({cartQty})
-          </button>
-        </header>
+          
 
         {/* ================================================== */}
         {/* LOADING */}
