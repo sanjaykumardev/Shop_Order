@@ -96,7 +96,7 @@ export default function CheckoutPage() {
                 Order placed
               </p>
               <p className="mt-2 text-sm" style={{ color: "#6B7268" }}>
-                We've received your order and payment.
+              We&apos;ve received your order and payment.
               </p>
               <button
                 onClick={() => router.push("/products")}
